@@ -10,7 +10,6 @@ import java.util.ArrayList;
 import static net.minecraft.block.Block.sideCoversSmallSquare;
 
 public class CheckingEnvironment {
-
     public static BlockPos findNearbyFlatBlockToPlaceRedstoneTorch(ClientWorld world, BlockPos blockPos) {
         if ((sideCoversSmallSquare(world, blockPos.east(), Direction.UP) && (world.getBlockState(blockPos.east().up()).getMaterial().isReplaceable()) || world.getBlockState(blockPos.east().up()).isOf(Blocks.REDSTONE_TORCH))) {
             return blockPos.east();
