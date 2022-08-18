@@ -1,21 +1,18 @@
 package yan.lx.bedrockminer.utils;
 
+import net.minecraft.block.Block;
 import net.minecraft.block.Blocks;
-import net.minecraft.block.FacingBlock;
 import net.minecraft.block.PistonBlock;
 import net.minecraft.client.world.ClientWorld;
 //import net.minecraft.item.ItemStack;
-import net.minecraft.datafixer.fix.ChunkPalettedStorageFix;
-import net.minecraft.item.Items;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 
 import java.util.ArrayList;
-
-import static net.minecraft.block.Block.sideCoversSmallSquare;
 //import net.minecraft.world.World;
 
 public class TargetBlock {
+    private Block block;
     private BlockPos blockPos;
     private BlockPos redstoneTorchBlockPos;
     private BlockPos pistonBlockPos;
@@ -25,8 +22,15 @@ public class TargetBlock {
     private int tickTimes;
     private boolean hasTried;
     private int stuckTicksCounter;
+    private int stuckTicks;
+    private int failedTicks;
+    private int retracted;
 
-    public TargetBlock(BlockPos pos, ClientWorld world) {
+    public TargetBlock(Block block, BlockPos pos, ClientWorld world) {
+        this.stuckTicks = 0;
+        this.failedTicks = 0;
+        this.retracted = 0;
+        this.block = block;
         this.hasTried = false;
         this.stuckTicksCounter = 0;
         this.status = Status.UNINITIALIZED;
@@ -69,13 +73,17 @@ public class TargetBlock {
                 BlockPlacer.pistonPlacement(this.pistonBlockPos, Direction.DOWN);
                 this.hasTried = true;
                 break;
+
             case RETRACTED:
-                BlockBreaker.breakBlock(world, pistonBlockPos);
-                BlockBreaker.breakBlock(world, pistonBlockPos.up());
-                if (this.slimeBlockPos != null) {
-                    BlockBreaker.breakBlock(world, slimeBlockPos);
+                if (stuckTicks++ > 0) {
+                    BlockBreaker.breakBlock(world, pistonBlockPos);
+                    BlockBreaker.breakBlock(world, pistonBlockPos.up());
+                    if (slimeBlockPos != null && !world.getBlockState(slimeBlockPos).getMaterial().isReplaceable()) {
+                        BlockBreaker.breakBlock(world, slimeBlockPos);
+                    }
+                    return Status.RETRACTED;
                 }
-                return Status.RETRACTED;
+
             case RETRACTING:
                 return Status.RETRACTING;
             case UNEXTENDED_WITHOUT_POWER_SOURCE:
@@ -83,18 +91,26 @@ public class TargetBlock {
                 BlockPlacer.simpleBlockPlacement(this.redstoneTorchBlockPos, Blocks.REDSTONE_TORCH);
                 break;
             case FAILED:
-                BlockBreaker.breakBlock(world, pistonBlockPos);
-                BlockBreaker.breakBlock(world, pistonBlockPos.up());
-                return Status.FAILED;
+                if (stuckTicks++ > 0) {
+                    BlockBreaker.breakBlock(world, pistonBlockPos);
+                    BlockBreaker.breakBlock(world, pistonBlockPos.up());
+                    if (slimeBlockPos != null && !world.getBlockState(slimeBlockPos).getMaterial().isReplaceable()) {
+                        BlockBreaker.breakBlock(world, slimeBlockPos);
+                    }
+                    return Status.FAILED;
+                }
             case STUCK:
-                BlockBreaker.breakBlock(world, pistonBlockPos);
-                BlockBreaker.breakBlock(world, pistonBlockPos.up());
+                if (stuckTicks++ > 0) {
+                    BlockBreaker.breakBlock(world, pistonBlockPos);
+                    BlockBreaker.breakBlock(world, pistonBlockPos.up());
+                }
                 break;
             case NEEDS_WAITING:
                 break;
         }
         return null;
     }
+
 
     enum Status {
         FAILED,
@@ -135,22 +151,22 @@ public class TargetBlock {
                 this.status = Status.FAILED;
                 Messager.actionBar("bedrockminer.fail.place.redstonetorch");
             }
-        } else if (!this.world.getBlockState(this.blockPos).isOf(Blocks.BEDROCK) && this.world.getBlockState(this.pistonBlockPos).isOf(Blocks.PISTON)) {
+        } else if (!this.world.getBlockState(this.blockPos).isOf(block) && this.world.getBlockState(this.pistonBlockPos).isOf(Blocks.PISTON)) {
             this.status = Status.RETRACTED;
         } else if (this.world.getBlockState(this.pistonBlockPos).isOf(Blocks.PISTON) && this.world.getBlockState(this.pistonBlockPos).get(PistonBlock.EXTENDED)) {
             this.status = Status.EXTENDED;
         } else if (this.world.getBlockState(this.pistonBlockPos).isOf(Blocks.MOVING_PISTON)) {
             this.status = Status.RETRACTING;
-        }  else if (this.world.getBlockState(this.pistonBlockPos).isOf(Blocks.PISTON) && !this.world.getBlockState(this.pistonBlockPos).get(PistonBlock.EXTENDED) && CheckingEnvironment.findNearbyRedstoneTorch(this.world, this.pistonBlockPos).size() != 0 && this.world.getBlockState(this.blockPos).isOf(Blocks.BEDROCK)) {
+        } else if (this.world.getBlockState(this.pistonBlockPos).isOf(Blocks.PISTON) && !this.world.getBlockState(this.pistonBlockPos).get(PistonBlock.EXTENDED) && CheckingEnvironment.findNearbyRedstoneTorch(this.world, this.pistonBlockPos).size() != 0 && this.world.getBlockState(this.blockPos).isOf(block)) {
             this.status = Status.UNEXTENDED_WITH_POWER_SOURCE;
         } else if (this.hasTried && this.world.getBlockState(this.pistonBlockPos).isOf(Blocks.PISTON) && this.stuckTicksCounter < 15) {
             this.status = Status.NEEDS_WAITING;
             this.stuckTicksCounter++;
-        } else if (this.world.getBlockState(this.pistonBlockPos).isOf(Blocks.PISTON) && this.world.getBlockState(this.pistonBlockPos).get(PistonBlock.FACING) == Direction.DOWN && !this.world.getBlockState(this.pistonBlockPos).get(PistonBlock.EXTENDED) && CheckingEnvironment.findNearbyRedstoneTorch(this.world, this.pistonBlockPos).size() != 0 && this.world.getBlockState(this.blockPos).isOf(Blocks.BEDROCK)) {
+        } else if (this.world.getBlockState(this.pistonBlockPos).isOf(Blocks.PISTON) && this.world.getBlockState(this.pistonBlockPos).get(PistonBlock.FACING) == Direction.DOWN && !this.world.getBlockState(this.pistonBlockPos).get(PistonBlock.EXTENDED) && CheckingEnvironment.findNearbyRedstoneTorch(this.world, this.pistonBlockPos).size() != 0 && this.world.getBlockState(this.blockPos).isOf(block)) {
             this.status = Status.STUCK;
             this.hasTried = false;
             this.stuckTicksCounter = 0;
-        }else if (this.world.getBlockState(this.pistonBlockPos).isOf(Blocks.PISTON) && !this.world.getBlockState(this.pistonBlockPos).get(PistonBlock.EXTENDED) && this.world.getBlockState(this.pistonBlockPos).get(PistonBlock.FACING) == Direction.UP && CheckingEnvironment.findNearbyRedstoneTorch(this.world, this.pistonBlockPos).size() == 0 && this.world.getBlockState(this.blockPos).isOf(Blocks.BEDROCK)) {
+        } else if (this.world.getBlockState(this.pistonBlockPos).isOf(Blocks.PISTON) && !this.world.getBlockState(this.pistonBlockPos).get(PistonBlock.EXTENDED) && this.world.getBlockState(this.pistonBlockPos).get(PistonBlock.FACING) == Direction.UP && CheckingEnvironment.findNearbyRedstoneTorch(this.world, this.pistonBlockPos).size() == 0 && this.world.getBlockState(this.blockPos).isOf(block)) {
             this.status = Status.UNEXTENDED_WITHOUT_POWER_SOURCE;
         } else if (CheckingEnvironment.has2BlocksOfPlaceToPlacePiston(world, this.blockPos)) {
             this.status = Status.UNINITIALIZED;
