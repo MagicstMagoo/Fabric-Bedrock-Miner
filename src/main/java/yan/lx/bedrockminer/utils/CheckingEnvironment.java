@@ -38,10 +38,13 @@ public class CheckingEnvironment {
     }
 
     public static boolean has2BlocksOfPlaceToPlacePiston(ClientWorld world, BlockPos blockPos) {
-        if (world.getBlockState(blockPos.up()).getHardness(world, blockPos.up()) == 0) {
-            BlockBreaker.breakBlock(world, blockPos.up());
+        BlockPos pos1 = blockPos.up();  // 活塞位置
+        BlockPos pos2 = pos1.up();      // 活塞臂位置
+        if (world.getBlockState(pos1).getHardness(world, pos1) == 0) {
+            BlockBreaker.breakBlock(pos1);
         }
-        return world.getBlockState(blockPos.up()).getMaterial().isReplaceable() && world.getBlockState(blockPos.up().up()).getMaterial().isReplaceable();
+        // 判断活塞位置和活塞臂位置是否可以放置
+        return world.getBlockState(pos1).getMaterial().isReplaceable() && world.getBlockState(pos2).getMaterial().isReplaceable();
     }
 
     public static ArrayList<BlockPos> findNearbyRedstoneTorch(ClientWorld world, BlockPos pistonBlockPos) {
