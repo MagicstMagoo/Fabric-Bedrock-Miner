@@ -19,7 +19,6 @@ public class BreakingFlowController {
     private static int tickNum = 0;
     private static List<Block> allowBlockList = new LinkedList<>();
     private static List<TargetBlock> cachedTargetBlockList = new LinkedList<>();
-
     private static boolean working = false;
 
     static {
@@ -28,106 +27,58 @@ public class BreakingFlowController {
         allowBlockList.add(Blocks.END_PORTAL);         // 末地传送门
         allowBlockList.add(Blocks.END_PORTAL_FRAME);   // 末地传送门-框架
         allowBlockList.add(Blocks.END_GATEWAY);        // 末地折跃门
-        // 添加已支持方块名称(输出文本使用)
     }
 
     public static void onDoItemUse(HitResult crosshairTarget, ClientWorld world, ClientPlayerEntity player) {
-        if(crosshairTarget.getType() != HitResult.Type.BLOCK || !player.getMainHandStack().isEmpty()){
+        if (crosshairTarget.getType() != HitResult.Type.BLOCK || !player.getMainHandStack().isEmpty()) {
             return;
         }
+
+        @Nullable Block block = null;
+        BlockHitResult blockHitResult = (BlockHitResult) crosshairTarget;
         for (Block allowBlock : allowBlockList) {
-            if (world.getBlockState(pos).isOf(allowBlock)) {
+            BlockPos blockPos = blockHitResult.getBlockPos();
+            if (world.getBlockState(blockPos).isOf(allowBlock)) {
                 block = allowBlock;
                 break;
             }
         }
         if (block == null) {
-            Messager.rawactionBar("请确保敲击的方块还是" + getBlocksName() + "！");
-        }
-
-        String haveEnoughItems = InventoryManager.warningMessage();
-        if (haveEnoughItems != null) {
-            Messager.actionBar(haveEnoughItems);
+            // Messager.rawactionBar("当前方块不在支持列表中");
             return;
         }
-
-        if (shouldAddNewTargetBlock(pos)) {
-            TargetBlock targetBlock = new TargetBlock(block, pos, world);
-            cachedTargetBlockList.add(targetBlock);
-        }
+        switchOnOff();
     }
 
-    public static void tick() {
-        if (InventoryManager.warningMessage() != null) {
+    public static void onHandleBlockBreaking(ClientWorld world, BlockPos blockPos) {
+        if (!working) {
             return;
         }
-        MinecraftClient minecraftClient = MinecraftClient.getInstance();
-        PlayerEntity player = minecraftClient.player;
-
-        if (!"survival".equals(minecraftClient.interactionManager.getCurrentGameMode().getName())) {
-            return;
-        }
-
-        for (int i = 0; i < cachedTargetBlockList.size(); i++) {
-            TargetBlock selectedBlock = cachedTargetBlockList.get(i);
-
-            //玩家切换世界，或离目标方块太远时，删除所有缓存的任务
-            if (selectedBlock.getWorld() != MinecraftClient.getInstance().world) {
-                cachedTargetBlockList = new ArrayList<TargetBlock>();
-                break;
-            }
-
-            if (blockInPlayerRange(selectedBlock.getBlockPos(), player, 3.4f)) {
-                TargetBlock.Status status = cachedTargetBlockList.get(i).tick();
-                if (status == TargetBlock.Status.RETRACTING) {
-                    continue;
-                } else if (status == TargetBlock.Status.FAILED || status == TargetBlock.Status.RETRACTED) {
-                    cachedTargetBlockList.remove(i);
-                } else {
-                    break;
-                }
-
+        for (Block block : allowBlockList) {
+            if (world.getBlockState(blockPos).isOf(block)) {
+                addBlockPosToList(blockPos);
+                return;
             }
         }
-    }
-
-    private static boolean blockInPlayerRange(BlockPos blockPos, PlayerEntity player, float range) {
-        return blockPos.isWithinDistance(player.getPos(), range);
     }
 
     public static WorkingMode getWorkingMode() {
         return WorkingMode.VANILLA;
     }
 
-    private static boolean shouldAddNewTargetBlock(BlockPos pos) {
-        for (int i = 0; i < cachedTargetBlockList.size(); i++) {
-            if (cachedTargetBlockList.get(i).getBlockPos().getManhattanDistance(pos) == 0) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    public static void switchOnOff(@Nullable ClientWorld world, BlockHitResult blockHitResult, @Nullable ClientPlayerEntity player) {
-        Block block = null;
-        for (Block allowBlock : allowBlockList) {
-            if (world.getBlockState(blockHitResult.getBlockPos()).isOf(allowBlock)) {
-                block = allowBlock;
-                break;
-            }
-        }
-        if (block == null) {
-            return;
-        }
-
+    public static void switchOnOff() {
         if (working) {
             Messager.chat("bedrockminer.toggle.off");
-
             working = false;
         } else {
-            Messager.chat("bedrockminer.toggle.on");
-            Messager.rawchat(getBlocksName());
             MinecraftClient minecraftClient = MinecraftClient.getInstance();
+            // Creative Mode?
+            if (minecraftClient.interactionManager.getCurrentGameMode().isCreative()) {
+                Messager.chat("bedrockminer.fail.missing.survival");
+                return;
+            }
+            Messager.chat("bedrockminer.toggle.on");
+            // In the Server ?
             if (!minecraftClient.isInSingleplayer()) {
                 Messager.chat("bedrockminer.warn.multiplayer");
             }
@@ -135,16 +86,83 @@ public class BreakingFlowController {
         }
     }
 
-    public static void onDoItemUse(HitResult crosshairTarget, ClientWorld world, ClientPlayerEntity player) {
+
+    public static void addBlockPosToList(BlockPos pos) {
+        MinecraftClient minecraftClient = MinecraftClient.getInstance();
+        ClientWorld world = minecraftClient.world;
+        if (world == null) return;
+
+        // 判断部分开启条件
+        String haveEnoughItems = InventoryManager.warningMessage();
+        if (haveEnoughItems != null) {
+            Messager.actionBar(haveEnoughItems);
+            return;
+        }
+
+        // 添加新目标方块到任务列表
+        if (shouldAddNewTargetBlock(pos)) {
+            Block block = world.getBlockState(pos).getBlock();
+            TargetBlock targetBlock = new TargetBlock(block, pos, world);
+            cachedTargetBlockList.add(targetBlock);
+        }
     }
 
-    public static void onHandleBlockBreaking(ClientWorld world, BlockPos blockPos) {
+
+    public static void tick() {
+        if (!working) return;
+        MinecraftClient minecraftClient = MinecraftClient.getInstance();
+        ClientWorld world = minecraftClient.world;
+        PlayerEntity player = minecraftClient.player;
+        ClientPlayerInteractionManager interactionManager = minecraftClient.interactionManager;
+        if (world == null || player == null || interactionManager == null) {
+            return;
+        }
+        // 运行更新程序
+        updater(minecraftClient, world, player, interactionManager);
+    }
+
+    public static void updater(MinecraftClient minecraftClient, ClientWorld world, PlayerEntity player, ClientPlayerInteractionManager interactionManager) {
+        if (InventoryManager.warningMessage() != null) {
+            return;
+        }
+        if (interactionManager.getCurrentGameMode().isCreative()) {
+            return;
+        }
+        for (int i = 0; i < cachedTargetBlockList.size(); i++) {
+            TargetBlock selectedBlock = cachedTargetBlockList.get(i);
+            // 玩家切换世界,距离目标方块太远时,删除所有缓存的任务
+            if (selectedBlock.getWorld() != world) {
+                cachedTargetBlockList.clear();
+                break;
+            }
+            // 判断玩家与方块距离是否在处理范围内
+            if (blockInPlayerRange(selectedBlock.getBlockPos(), player, 3.4f)) {
+                boolean finish = cachedTargetBlockList.get(i).updater();
+                if (finish) {
+                    cachedTargetBlockList.remove(i);
+                    i--;
+                }
+            }
+        }
     }
 
 
-    //测试用的。使用原版模式已经足以满足大多数需求。
-    //just for test. The VANILLA mode is powerful enough.
-    enum WorkingMode {
+    private static boolean blockInPlayerRange(BlockPos blockPos, PlayerEntity player, float range) {
+        return blockPos.isWithinDistance(player.getPos(), range);
+    }
+
+    private static boolean shouldAddNewTargetBlock(BlockPos pos) {
+        for (TargetBlock targetBlock : cachedTargetBlockList) {
+            if (targetBlock.getBlockPos().getManhattanDistance(pos) == 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+
+    /*** 测试用的。使用原版模式已经足以满足大多数需求。 ***/
+    public enum WorkingMode {
         CARPET_EXTRA,
         VANILLA,
         MANUALLY;
