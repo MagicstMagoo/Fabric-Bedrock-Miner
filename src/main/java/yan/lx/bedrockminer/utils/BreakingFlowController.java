@@ -4,27 +4,21 @@ import net.minecraft.block.Block;
 import net.minecraft.block.Blocks;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayerEntity;
+import net.minecraft.client.network.ClientPlayerInteractionManager;
 import net.minecraft.client.world.ClientWorld;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.util.hit.BlockHitResult;
+import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
-//import java.util.List;
+import java.util.LinkedList;
+import java.util.List;
 
 public class BreakingFlowController {
-    private static ArrayList<TargetBlock> cachedTargetBlockList = new ArrayList<>();
-    private static ArrayList<Block> allowBlockList = new ArrayList<>();
-    private static ArrayList<String> allowBlockNameList = new ArrayList<>();
-
-    public static boolean isWorking() {
-        return working;
-    }
-
-    public static String getBlocksName() {
-        return String.join("|", allowBlockNameList);
-    }
+    private static int tickNum = 0;
+    private static List<Block> allowBlockList = new LinkedList<>();
+    private static List<TargetBlock> cachedTargetBlockList = new LinkedList<>();
 
     private static boolean working = false;
 
@@ -35,14 +29,12 @@ public class BreakingFlowController {
         allowBlockList.add(Blocks.END_PORTAL_FRAME);   // 末地传送门-框架
         allowBlockList.add(Blocks.END_GATEWAY);        // 末地折跃门
         // 添加已支持方块名称(输出文本使用)
-        for (Block block : allowBlockList) {
-            allowBlockNameList.add(block.getName().getString());
-        }
     }
 
-    public static void addBlockPosToList(BlockPos pos) {
-        ClientWorld world = MinecraftClient.getInstance().world;
-        Block block = null;
+    public static void onDoItemUse(HitResult crosshairTarget, ClientWorld world, ClientPlayerEntity player) {
+        if(crosshairTarget.getType() != HitResult.Type.BLOCK || !player.getMainHandStack().isEmpty()){
+            return;
+        }
         for (Block allowBlock : allowBlockList) {
             if (world.getBlockState(pos).isOf(allowBlock)) {
                 block = allowBlock;
@@ -141,6 +133,12 @@ public class BreakingFlowController {
             }
             working = true;
         }
+    }
+
+    public static void onDoItemUse(HitResult crosshairTarget, ClientWorld world, ClientPlayerEntity player) {
+    }
+
+    public static void onHandleBlockBreaking(ClientWorld world, BlockPos blockPos) {
     }
 
 
